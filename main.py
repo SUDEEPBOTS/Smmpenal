@@ -78,11 +78,16 @@ async def start(client, message):
     start_img = "https://i.ibb.co/VcHB3c6q/247e441f5ad09d2e61ee25d64785c602.jpg" 
     
     welcome_text = (
-        f"👋 **{txt('welcome to premium smm')}**\n\n"
+        f"👋 **{txt('welcome to the #1 premium smm bot')}** 🚀\n\n"
         f"👑 **{txt('user')}:** {txt(name)}\n"
         f"🆔 **{txt('id')}:** `{user_id}`\n\n"
-        f"🤖 **{txt('ai support active')}**\n"
-        f"👇 **{txt('select action')}:**"
+        f"✨ **{txt('boost your social media presence')}**\n"
+        f"▫️ {txt('cheapest & fastest services')}\n"
+        f"▫️ {txt('instant delivery & 24/7 support')}\n"
+        f"▫️ {txt('advanced ai assistant integrated')}\n\n"
+        f"🤖 **{txt('need help?')}**\n"
+        f"{txt('you can chat with our ai support directly here!')}\n\n"
+        f"👇 **{txt('select an action below')}:**"
     )
 
     # Standard Buttons
@@ -227,7 +232,7 @@ async def master_callback(client, callback: CallbackQuery):
 
     elif data == "menu_deposit":
         qr_url = "https://i.ibb.co/HTdfpLgv/Screenshot-20260109-103131-Phone-Pe.png"
-        caption = f"{txt('💳 add funds')}\n\nUPI: `sudeepkumar8202@ybl`\nSend Screenshot after payment."
+        caption = f"{txt('💳 add funds')}\n\nUPI: `ᴀɴʏ ᴘʀᴏʙʟᴇᴍ ᴘʟᴇᴀsᴇ ᴅᴍ ᴍᴇ @Kaito_3_2 `\nSend Screenshot after payment."
         await callback.message.delete()
         await client.send_photo(user_id, qr_url, caption=caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
