@@ -4,12 +4,18 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from pyrogram.enums import ChatAction
 from motor.motor_asyncio import AsyncIOMotorClient
 from api import smm
-from support import ai_agent  # 👈 AI Import kiya
+from support import ai_agent
 import config
 
 # ─────────────────────────────
-# 🛠️ SETUP & UTILS
+# 🛠️ HARDCODED CONFIG (Fix for Heroku)
 # ─────────────────────────────
+
+# Tera User ID (Ab yahi owner hai)
+MY_OWNER_ID = 6356015122 
+
+# Tera Log Channel ID (Bot yahan Admin hona chahiye)
+MY_LOG_CHANNEL = -1003639584506
 
 app = Client(
     "SMM_Bot",
@@ -89,7 +95,7 @@ async def start(client, message):
         [InlineKeyboardButton(txt("💳 add funds"), callback_data="menu_deposit"),
          InlineKeyboardButton(txt("🎁 redeem code"), callback_data="menu_redeem")],
         [InlineKeyboardButton(txt("👤 profile"), callback_data="menu_profile"),
-         InlineKeyboardButton(txt("📞 support / help"), callback_data="ai_help")] # AI Button
+         InlineKeyboardButton(txt("📞 support / help"), callback_data="ai_help")]
     ])
     
     await message.reply_photo(photo=start_img, caption=welcome_text, has_spoiler=True, reply_markup=btns)
@@ -114,16 +120,8 @@ async def callback_handler(client, callback: CallbackQuery):
         ])
         await callback.message.edit(txt("main menu"), reply_markup=btns)
 
-    # 🤖 AI HELP MESSAGE
     elif data == "ai_help":
-        msg = (
-            f"🤖 **{txt('ai support system')}**\n\n"
-            f"I am connected to **Groq AI**. You don't need to wait for an admin.\n"
-            f"👉 **Just type your query here.**\n\n"
-            f"Examples:\n"
-            f"- 'Mera order 1234 kyu pending hai?'\n"
-            f"- 'Funds kaise add karu?'"
-        )
+        msg = f"🤖 **{txt('ai support system')}**\n\nConnected to **Groq AI**.\n👉 **Type your query directly.**"
         await callback.message.edit(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
     elif data == "menu_categories":
@@ -148,7 +146,7 @@ async def callback_handler(client, callback: CallbackQuery):
 
     elif data == "menu_deposit":
         qr_url = "https://i.ibb.co/HTdfpLgv/Screenshot-20260109-103131-Phone-Pe.png"
-        caption = f"{txt('💳 add funds')}\n\nUPI: `sudeep@ybl`\nSend Screenshot after payment."
+        caption = f"{txt('💳 add funds')}\n\nUPI: `sudeepkumar8202@ybl`\nSend Screenshot after payment."
         await callback.message.delete()
         await client.send_photo(user_id, qr_url, caption=caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
@@ -201,66 +199,64 @@ async def callback_handler(client, callback: CallbackQuery):
         await callback.message.edit(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="home")]]))
 
 # ─────────────────────────────
-# ✍️ INPUT HANDLER (ORDERS & REDEEM)
+# ✍️ INPUT HANDLER
 # ─────────────────────────────
 
 @app.on_message(filters.text & filters.private)
 async def input_handler(client, message: Message):
     user_id = message.from_user.id
-    
-    # 🔍 CHECK IF USER IS IN A STATE (Order/Redeem)
-    if user_id in USER_STATES:
-        state = USER_STATES[user_id]
-        step = state["step"]
-        
-        if step == "waiting_code":
-            code = message.text.strip().upper()
-            data = await codes_col.find_one({"code": code})
-            if not data or user_id in data["used_by"]: return await message.reply("Invalid/Used Code")
-            await users_col.update_one({"_id": user_id}, {"$inc": {"balance": data["val"]}})
-            await codes_col.update_one({"code": code}, {"$push": {"used_by": user_id}})
-            await message.reply(f"Redeemed ₹{data['val']}")
-            del USER_STATES[user_id]
-
-        elif step == "waiting_link":
-            if "t.me" not in message.text: return await message.reply("Invalid Telegram Link")
-            USER_STATES[user_id]["link"] = message.text
-            USER_STATES[user_id]["step"] = "waiting_qty"
-            s = state["service"]
-            await message.reply(f"Link Saved. Enter Quantity ({s['min']}-{s['max']}):")
-
-        elif step == "waiting_qty":
-            try: qty = int(message.text)
-            except: return await message.reply("Number only")
-            s = state["service"]
-            if qty < int(s["min"]) or qty > int(s["max"]): return await message.reply("Invalid Quantity")
-            cost = (float(s['rate']) * 1.5 * qty) / 1000
-            user = await users_col.find_one({"_id": user_id})
-            if user["balance"] < cost: 
-                del USER_STATES[user_id]
-                return await message.reply(f"Low Balance. Need ₹{cost:.2f}")
-            
-            resp = await smm.add_order(s['service'], state["link"], qty)
-            if "order" in resp:
-                await users_col.update_one({"_id": user_id}, {"$inc": {"balance": -cost, "total_spent": cost}})
-                await orders_col.insert_one({"order_id": resp["order"], "user_id": user_id, "status": "pending", "cost": cost})
-                await message.reply(f"Order {resp['order']} Placed! Cost: ₹{cost:.2f}")
-            else: await message.reply(f"Error: {resp}")
-            del USER_STATES[user_id]
+    if user_id not in USER_STATES: 
+        # AI SUPPORT
+        if not message.text.startswith("/"):
+            user_data = await users_col.find_one({"_id": user_id})
+            recent_orders = []
+            async for o in orders_col.find({"user_id": user_id}).sort("_id", -1).limit(5): recent_orders.append(o)
+            await client.send_chat_action(user_id, ChatAction.TYPING)
+            response = ai_agent.get_response(user_data, recent_orders, message.text)
+            await message.reply(response)
         return
 
-    # 🤖 AI HANDLER (Agar koi state nahi hai, toh AI baat karega)
-    if not message.text.startswith("/"):
-        user_data = await users_col.find_one({"_id": user_id})
-        recent_orders = []
-        async for o in orders_col.find({"user_id": user_id}).sort("_id", -1).limit(5): recent_orders.append(o)
+    state = USER_STATES[user_id]
+    step = state["step"]
+    
+    if step == "waiting_code":
+        code = message.text.strip().upper()
+        data = await codes_col.find_one({"code": code})
+        if not data: return await message.reply("Invalid Code")
+        if user_id in data["used_by"]: return await message.reply("Already Used")
+        await users_col.update_one({"_id": user_id}, {"$inc": {"balance": data["val"]}})
+        await codes_col.update_one({"code": code}, {"$push": {"used_by": user_id}})
+        await message.reply(f"Redeemed ₹{data['val']}")
+        del USER_STATES[user_id]
+
+    elif step == "waiting_link":
+        if "t.me" not in message.text: return await message.reply("Invalid Link")
+        USER_STATES[user_id]["link"] = message.text
+        USER_STATES[user_id]["step"] = "waiting_qty"
+        s = state["service"]
+        await message.reply(f"Enter Quantity ({s['min']}-{s['max']}):")
+
+    elif step == "waiting_qty":
+        try: qty = int(message.text)
+        except: return await message.reply("Number only")
+        s = state["service"]
+        if qty < int(s["min"]) or qty > int(s["max"]): return await message.reply("Invalid Quantity")
+        cost = (float(s['rate']) * 1.5 * qty) / 1000
+        user = await users_col.find_one({"_id": user_id})
+        if user["balance"] < cost: 
+            del USER_STATES[user_id]
+            return await message.reply(f"Low Balance. Need ₹{cost:.2f}")
         
-        await client.send_chat_action(user_id, ChatAction.TYPING)
-        response = ai_agent.get_response(user_data, recent_orders, message.text)
-        await message.reply(response)
+        resp = await smm.add_order(s['service'], state["link"], qty)
+        if "order" in resp:
+            await users_col.update_one({"_id": user_id}, {"$inc": {"balance": -cost, "total_spent": cost}})
+            await orders_col.insert_one({"order_id": resp["order"], "user_id": user_id, "status": "pending", "cost": cost})
+            await message.reply(f"Order Placed! ID: {resp['order']}")
+        else: await message.reply(f"Error: {resp}")
+        del USER_STATES[user_id]
 
 # ─────────────────────────────
-# 📸 PAYMENT & ADMIN (DEBUGGED)
+# 📸 PAYMENT & ADMIN (FIXED OWNER & CHANNEL)
 # ─────────────────────────────
 
 @app.on_message(filters.photo & filters.private)
@@ -268,44 +264,60 @@ async def handle_ss(client, message):
     if message.from_user.id in USER_STATES: return
     uid, name = message.from_user.id, message.from_user.first_name
     btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"pay_app_{uid}"), InlineKeyboardButton("❌ Reject", callback_data=f"pay_rej_{uid}")]])
-    await client.send_photo(config.LOG_CHANNEL_ID, message.photo.file_id, caption=f"📩 Pay: {name} (`{uid}`)", has_spoiler=True, reply_markup=btns)
-    await message.reply("Wait for approval.")
+    
+    try:
+        # LOG CHANNEL MEIN BHEJ RAHE HAIN
+        await client.send_photo(MY_LOG_CHANNEL, message.photo.file_id, caption=f"📩 Pay: {name} (`{uid}`)", has_spoiler=True, reply_markup=btns)
+        await message.reply(txt("screenshot submitted. wait for approval."))
+    except Exception as e:
+        await message.reply(f"❌ Error sending to Admin: {e}")
+        print(f"ERROR Sending Photo: {e}")
 
 @app.on_callback_query()
 async def pay_cb(client, cb):
-    # 👇 DEBUG PRINTING (Check Heroku Logs)
-    print(f"DEBUG: Clicker: {cb.from_user.id} | Owner: {config.OWNER_ID}")
+    # 👇 OWNER CHECK (Hardcoded)
+    if cb.from_user.id != MY_OWNER_ID: 
+        return await cb.answer(f"⚠️ You are not Admin! (ID: {cb.from_user.id})", show_alert=True)
 
     if cb.data.startswith("pay_rej_"):
-        if int(cb.from_user.id) != int(config.OWNER_ID): return await cb.answer("Admin Only!", show_alert=True)
         uid = int(cb.data.split("_")[2])
         await cb.message.delete()
-        await client.send_message(uid, "❌ Payment Rejected")
+        await client.send_message(uid, txt("payment rejected ❌"))
     
     elif cb.data.startswith("pay_app_"):
-        if int(cb.from_user.id) != int(config.OWNER_ID): return await cb.answer("Admin Only!", show_alert=True)
         uid = int(cb.data.split("_")[2])
         ADMIN_STATES[cb.from_user.id] = {"act": "fund", "target": uid}
-        await cb.message.reply_text(f"💰 Amount for `{uid}`:", reply_markup=ForceReply(selective=True))
+        
+        # Log Channel mein hi reply mangenge
+        await cb.message.reply_text(
+            f"💰 {txt('enter amount for user')} `{uid}`:",
+            reply_markup=ForceReply(selective=True)
+        )
 
-@app.on_message(filters.reply & filters.user(int(config.OWNER_ID))) # Explicit int cast
+# ✅ ADMIN REPLY HANDLER
+@app.on_message(filters.reply & filters.user(MY_OWNER_ID))
 async def admin_pay_reply(client, message):
     aid = message.from_user.id
     if aid in ADMIN_STATES and ADMIN_STATES[aid]["act"] == "fund":
         uid = ADMIN_STATES[aid]["target"]
         try: amt = float(message.text)
-        except: return await message.reply("Numbers Only")
+        except: return await message.reply("Numbers Only!")
+        
         await users_col.update_one({"_id": uid}, {"$inc": {"balance": amt}})
         await client.send_message(uid, f"✅ Funds Added: ₹{amt}")
         await message.reply(f"Done. Added ₹{amt}")
         del ADMIN_STATES[aid]
 
-@app.on_message(filters.command("createcode") & filters.user(int(config.OWNER_ID)))
+# ─────────────────────────────
+# 🛠️ ADMIN COMMANDS
+# ─────────────────────────────
+
+@app.on_message(filters.command("createcode") & filters.user(MY_OWNER_ID))
 async def cc(c, m):
     try: _, n, v = m.text.split(" "); await codes_col.insert_one({"code": n.upper(), "val": float(v), "used_by": []}); await m.reply("Created.")
     except: pass
 
-@app.on_message(filters.command("broadcast") & filters.user(int(config.OWNER_ID)))
+@app.on_message(filters.command("broadcast") & filters.user(MY_OWNER_ID))
 async def bc(c, m):
     if not m.reply_to_message: return
     async for u in users_col.find({}):
@@ -322,4 +334,4 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(check_orders_loop())
     app.run()
-            
+    
