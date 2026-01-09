@@ -37,7 +37,6 @@ def txt(text):
 async def check_orders_loop():
     while True:
         try:
-            # Sirf Pending orders check karo
             async for order in orders_col.find({"status": {"$in": ["pending", "in progress", "processing"]}}):
                 order_id = order["order_id"]
                 user_id = order["user_id"]
@@ -51,31 +50,19 @@ async def check_orders_loop():
                     if new_status != old_status:
                         await orders_col.update_one({"order_id": order_id}, {"$set": {"status": new_status}})
 
-                        # COMPLETE NOTIFICATION
                         if new_status == "completed":
-                            msg = (
-                                f"{txt('order update')} ✅\n\n"
-                                f"{txt('id')}: {order_id}\n"
-                                f"{txt('status')}: {txt('completed')}"
-                            )
+                            msg = f"{txt('order update')} ✅\n{txt('id')}: {order_id}\n{txt('status')}: {txt('completed')}"
                             try: await app.send_message(user_id, msg)
                             except: pass
                             
-                        # CANCELED -> AUTO REFUND
                         elif new_status == "canceled":
                             refund_amount = order["cost"]
                             await users_col.update_one({"_id": user_id}, {"$inc": {"balance": refund_amount}})
-                            
-                            msg = (
-                                f"{txt('order update')} ❌\n\n"
-                                f"{txt('id')}: {order_id}\n"
-                                f"{txt('status')}: {txt('canceled')}\n"
-                                f"{txt('refunded')}: ₹{refund_amount:.2f}"
-                            )
+                            msg = f"{txt('order update')} ❌\n{txt('id')}: {order_id}\n{txt('status')}: {txt('canceled')}\n{txt('refunded')}: ₹{refund_amount:.2f}"
                             try: await app.send_message(user_id, msg)
                             except: pass
 
-            await asyncio.sleep(300) # 5 Min wait
+            await asyncio.sleep(300) 
         except Exception as e:
             print(f"Loop Error: {e}")
             await asyncio.sleep(60)
@@ -93,21 +80,39 @@ async def start(client, message):
     if not user:
         await users_col.insert_one({"_id": user_id, "name": name, "balance": 0.0, "total_spent": 0.0})
     
+    # 🖼️ START IMAGE WITH SPOILER
+    # Ek badhiya si SMM related photo ka link
+    start_img = "https://i.ibb.co/VcHB3c6q/247e441f5ad09d2e61ee25d64785c602.jpg" 
+    
+    # 📝 LONG WELCOME MESSAGE
+    welcome_text = (
+        f"👋 **{txt('welcome to the premium smm bot')}**\n\n"
+        f"👑 **{txt('user')}:** {txt(name)}\n"
+        f"🆔 **{txt('id')}:** `{user_id}`\n\n"
+        f"🚀 **{txt('boost your social media presence')}**\n"
+        f"ᴡᴇ ᴘʀᴏᴠɪᴅᴇ ᴛʜᴇ ᴄʜᴇᴀᴘᴇsᴛ ᴀɴᴅ ғᴀsᴛᴇsᴛ sᴇʀᴠɪᴄᴇs ғᴏʀ ᴛᴇʟᴇɢʀᴀᴍ.\n"
+        f"ᴀᴜᴛᴏᴍᴀᴛɪᴄ ᴏʀᴅᴇʀs, ɪɴsᴛᴀɴᴛ sᴛᴀʀᴛ, ᴀɴᴅ 24/7 sᴜᴘᴘᴏʀᴛ.\n\n"
+        f"👇 **{txt('select an action below')}:**"
+    )
+
     btns = InlineKeyboardMarkup([
-        [InlineKeyboardButton(txt("🚀 new order"), callback_data="services_0")],
+        [InlineKeyboardButton(txt("🚀 new order"), callback_data="menu_categories")], # Changed to Categories
+        [InlineKeyboardButton(txt("💳 add funds"), callback_data="menu_deposit"),
+         InlineKeyboardButton(txt("🎁 redeem code"), callback_data="menu_redeem")],
         [InlineKeyboardButton(txt("👤 profile"), callback_data="menu_profile"),
-         InlineKeyboardButton(txt("💳 add funds"), callback_data="menu_deposit")],
-        [InlineKeyboardButton(txt("📞 support"), url="https://t.me/Sudeep_Support")]
+         InlineKeyboardButton(txt("📞 support"), url="https://t.me/Sudeep_Support")]
     ])
     
-    await message.reply(
-        f"{txt('welcome to panel')}\n\n"
-        f"{txt('select an option below')}:",
+    # Send Photo with Spoiler
+    await message.reply_photo(
+        photo=start_img,
+        caption=welcome_text,
+        has_spoiler=True,  # 👈 SPOILER EFFECT
         reply_markup=btns
     )
 
 # ─────────────────────────────
-# 🖱️ CALLBACK HANDLER (LOGIC CORE)
+# 🖱️ CALLBACK HANDLER
 # ─────────────────────────────
 
 @app.on_callback_query()
@@ -119,11 +124,26 @@ async def callback_handler(client, callback: CallbackQuery):
     if data == "home":
         if user_id in USER_STATES: del USER_STATES[user_id]
         btns = InlineKeyboardMarkup([
-            [InlineKeyboardButton(txt("🚀 new order"), callback_data="services_0")],
+            [InlineKeyboardButton(txt("🚀 new order"), callback_data="menu_categories")],
+            [InlineKeyboardButton(txt("💳 add funds"), callback_data="menu_deposit"),
+             InlineKeyboardButton(txt("🎁 redeem code"), callback_data="menu_redeem")],
             [InlineKeyboardButton(txt("👤 profile"), callback_data="menu_profile"),
-             InlineKeyboardButton(txt("💳 add funds"), callback_data="menu_deposit")]
+             InlineKeyboardButton(txt("📞 support"), url="https://t.me/Sudeep_Support")]
         ])
         await callback.message.edit(txt("main menu"), reply_markup=btns)
+
+    # 📂 SERVICE CATEGORIES (New Step)
+    elif data == "menu_categories":
+        text = f"📂 **{txt('select category')}**\n{txt('choose what you want to buy')}:"
+        
+        btns = InlineKeyboardMarkup([
+            [InlineKeyboardButton(txt("👁️ views"), callback_data="cat_view"),
+             InlineKeyboardButton(txt("👤 members"), callback_data="cat_member")],
+            [InlineKeyboardButton(txt("👍 reactions"), callback_data="cat_reaction"),
+             InlineKeyboardButton(txt("⚡ others"), callback_data="cat_other")],
+            [InlineKeyboardButton(txt("🔙 back"), callback_data="home")]
+        ])
+        await callback.message.edit(text, reply_markup=btns)
 
     # 👤 PROFILE
     elif data == "menu_profile":
@@ -136,72 +156,104 @@ async def callback_handler(client, callback: CallbackQuery):
         )
         await callback.message.edit(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
-    # 💳 DEPOSIT (UPDATED WITH QR IMAGE)
+    # 🎁 REDEEM CODE
+    elif data == "menu_redeem":
+        USER_STATES[user_id] = {"step": "waiting_code"}
+        text = f"{txt('🎁 redeem promo code')}\n\n{txt('send your promo code below')}:"
+        await callback.message.edit(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
+
+    # 💳 DEPOSIT (QR CODE)
     elif data == "menu_deposit":
-        # Tera PhonePe Image Link
         qr_url = "https://i.ibb.co/HTdfpLgv/Screenshot-20260109-103131-Phone-Pe.png"
-        
         caption = (
             f"{txt('💳 add funds')}\n\n"
-            f"UPI: `sudeepkumar8202@ybl`\n" # Screenshot ke hisab se UPI ID
-            f"Scan QR above to pay.\n\n"
-            f"{txt('important')}: {txt('send screenshot after payment')}"
+            f"UPI: `sudeepkumar8202@ybl`\n"
+            f"**{txt('how to pay')}:**\n"
+            f"1. Scan QR or use UPI ID.\n"
+            f"2. Pay any amount you want.\n"
+            f"3. Send the **Screenshot** here.\n"
+            f"4. Admin will verify and add funds."
         )
-        
-        # Purana message delete karke Photo bhejo
         await callback.message.delete()
-        await client.send_photo(
-            chat_id=user_id,
-            photo=qr_url,
-            caption=caption,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]])
-        )
+        await client.send_photo(user_id, qr_url, caption=caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
-    # 🚀 SERVICES (PAGINATION SYSTEM)
+    # 🔍 PREPARE CATEGORY (Set offset 0)
+    elif data.startswith("cat_"):
+        category_type = data.split("_")[1] # view, member, reaction, other
+        # Start from offset 0 for this category
+        # Hum is request ko redirect kar rahe hain `services_` logic pe
+        # Format: services_{category}_{offset}
+        new_data = f"services_{category_type}_0"
+        
+        # Manually trigger next logic
+        callback.data = new_data 
+        await callback_handler(client, callback) # Recursion to reuse logic
+
+    # 🚀 SERVICES LIST (With Category Filter & Pagination)
     elif data.startswith("services_"):
-        offset = int(data.split("_")[1])
+        parts = data.split("_")
+        cat_filter = parts[1] # view, member, etc.
+        offset = int(parts[2])
         limit = 10 
 
         await callback.answer(txt("loading..."))
         services = await smm.get_services()
         if "error" in services: return await callback.message.edit(txt("api error"))
 
-        # FILTER: Only Telegram
+        # 1. First Filter: Only Telegram
         tg_services = [s for s in services if "telegram" in s.get("name", "").lower() or "telegram" in s.get("category", "").lower()]
         
-        if not tg_services: return await callback.message.edit(txt("no telegram services found"))
+        # 2. Second Filter: Category (View/Member/Reaction)
+        final_list = []
+        for s in tg_services:
+            name = s.get("name", "").lower()
+            category_name = s.get("category", "").lower()
+            combined = name + " " + category_name
+            
+            if cat_filter == "view" and "view" in combined:
+                final_list.append(s)
+            elif cat_filter == "member" and ("member" in combined or "subscriber" in combined):
+                final_list.append(s)
+            elif cat_filter == "reaction" and ("reaction" in combined or "like" in combined):
+                final_list.append(s)
+            elif cat_filter == "other":
+                # Jo upar wale teeno nahi hain
+                if not any(x in combined for x in ["view", "member", "subscriber", "reaction", "like"]):
+                    final_list.append(s)
 
-        # SLICING
-        current_batch = tg_services[offset : offset + limit]
-        total_services = len(tg_services)
+        if not final_list: return await callback.message.edit(txt("no services found in this category"))
+
+        # PAGINATION
+        current_batch = final_list[offset : offset + limit]
+        total_services = len(final_list)
 
         btns_list = []
         for s in current_batch:
-            rate = float(s['rate']) * 1.5 # 50% Profit
+            rate = float(s['rate']) * 1.5 
             btn_text = f"₹{rate:.1f} | {s['name'][:25]}.."
             btns_list.append([InlineKeyboardButton(btn_text, callback_data=f"sel_srv_{s['service']}")])
 
         # Nav Buttons
         nav_btns = []
         if offset >= limit:
-            nav_btns.append(InlineKeyboardButton("⬅️", callback_data=f"services_{offset - limit}"))
+            nav_btns.append(InlineKeyboardButton("⬅️", callback_data=f"services_{cat_filter}_{offset - limit}"))
         
         current_page = (offset // limit) + 1
         total_pages = (total_services // limit) + 1 if total_services % limit != 0 else total_services // limit
         nav_btns.append(InlineKeyboardButton(f"{current_page}/{total_pages}", callback_data="ignore"))
 
         if offset + limit < total_services:
-            nav_btns.append(InlineKeyboardButton("➡️", callback_data=f"services_{offset + limit}"))
+            nav_btns.append(InlineKeyboardButton("➡️", callback_data=f"services_{cat_filter}_{offset + limit}"))
 
         btns_list.append(nav_btns)
-        btns_list.append([InlineKeyboardButton(txt("🔙 back to home"), callback_data="home")])
+        btns_list.append([InlineKeyboardButton(txt("🔙 back to categories"), callback_data="menu_categories")])
         
-        await callback.message.edit(f"{txt('select service')}:", reply_markup=InlineKeyboardMarkup(btns_list))
+        await callback.message.edit(f"{txt(f'select {cat_filter} service')}:", reply_markup=InlineKeyboardMarkup(btns_list))
 
     elif data == "ignore":
         await callback.answer(txt("page info"), show_alert=False)
 
-    # 📝 SERVICE SELECTION
+    # 📝 SERVICE DETAILS & LINK INPUT
     elif data.startswith("sel_srv_"):
         s_id = int(data.split("_")[2])
         all_services = await smm.get_services()
@@ -226,7 +278,7 @@ async def callback_handler(client, callback: CallbackQuery):
         await callback.message.edit(text, reply_markup=btn, disable_web_page_preview=True)
 
 # ─────────────────────────────
-# ✍️ INPUT HANDLER (LINK -> QUANTITY)
+# ✍️ INPUT HANDLER
 # ─────────────────────────────
 
 @app.on_message(filters.text & filters.private)
@@ -237,28 +289,38 @@ async def input_handler(client, message: Message):
     state = USER_STATES[user_id]
     step = state["step"]
     
-    # STEP 1: LINK
-    if step == "waiting_link":
+    # 🎁 REDEEM
+    if step == "waiting_code":
+        code = message.text.strip().upper()
+        data = await codes_col.find_one({"code": code})
+        
+        if not data: return await message.reply(txt("❌ invalid code"))
+        if user_id in data["used_by"]: return await message.reply(txt("⚠️ code already used"))
+            
+        amount = data["val"]
+        await users_col.update_one({"_id": user_id}, {"$inc": {"balance": amount}})
+        await codes_col.update_one({"code": code}, {"$push": {"used_by": user_id}})
+        await message.reply(f"🥳 {txt('redeem successful')}!\n₹{amount} {txt('added to wallet')}")
+        del USER_STATES[user_id]
+
+    # 🔗 LINK
+    elif step == "waiting_link":
         link = message.text.strip()
         if "t.me" not in link and "telegram" not in link:
             return await message.reply(txt("invalid link. send telegram link."))
-            
         USER_STATES[user_id]["link"] = link
         USER_STATES[user_id]["step"] = "waiting_qty"
-        
         s = state["service"]
         await message.reply(f"🔗 {txt('link saved')}\n\n🔢 {txt('enter quantity')}\n({s['min']} - {s['max']}):")
 
-    # STEP 2: QUANTITY & ORDER
+    # 🔢 QUANTITY
     elif step == "waiting_qty":
         try: qty = int(message.text)
         except: return await message.reply(txt("number only"))
-            
+        
         s = state["service"]
         min_q, max_q = int(s["min"]), int(s["max"])
-        
-        if qty < min_q or qty > max_q:
-            return await message.reply(f"❌ {txt('range')}: {min_q} - {max_q}")
+        if qty < min_q or qty > max_q: return await message.reply(f"❌ {txt('range')}: {min_q} - {max_q}")
             
         rate = float(s['rate']) * 1.5
         cost = (rate * qty) / 1000
@@ -266,10 +328,9 @@ async def input_handler(client, message: Message):
         user = await users_col.find_one({"_id": user_id})
         if user["balance"] < cost:
             del USER_STATES[user_id]
-            return await message.reply(f"❌ {txt('low balance')}\n{txt('needed')}: ₹{cost:.2f}\n{txt('have')}: ₹{user['balance']:.2f}")
+            return await message.reply(f"❌ {txt('low balance')}\n{txt('needed')}: ₹{cost:.2f}")
             
         status_msg = await message.reply(txt("processing..."))
-        
         link = state["link"]
         resp = await smm.add_order(s['service'], link, qty)
         
@@ -277,7 +338,6 @@ async def input_handler(client, message: Message):
             oid = resp["order"]
             await users_col.update_one({"_id": user_id}, {"$inc": {"balance": -cost, "total_spent": cost}})
             await orders_col.insert_one({"order_id": oid, "user_id": user_id, "status": "pending", "cost": cost})
-            
             final_msg = (
                 f"✅ **{txt('order successful')}**\n\n"
                 f"🆔 {txt('id')}: `{oid}`\n"
@@ -285,47 +345,30 @@ async def input_handler(client, message: Message):
                 f"🔢 {txt('qty')}: {qty}\n"
                 f"💰 {txt('cost')}: ₹{cost:.2f}\n\n"
                 f"⚠️ **{txt('alerts')}**\n"
-                f"⚠️ Do not submit multiple orders for same link until fully delivered\n"
-                f"⚠️ If link is changed/private, order marked complete without refund"
+                f"⚠️ Do not submit multiple orders for same link until fully delivered"
             )
             await status_msg.edit(final_msg)
         else:
             await status_msg.edit(f"❌ {txt('error')}: {resp}")
-            
         del USER_STATES[user_id]
 
 # ─────────────────────────────
-# 📸 PAYMENT SYSTEM
+# 📸 PAYMENT & ADMIN
 # ─────────────────────────────
 
 @app.on_message(filters.command("deposit"))
 async def deposit_info(client, message):
     qr_url = "https://i.ibb.co/HTdfpLgv/Screenshot-20260109-103131-Phone-Pe.png"
-    
-    msg = (
-        f"{txt('add funds')}\n\n"
-        f"UPI: `sudeepkumar8202@ybl`\n"
-        f"{txt('note')}: {txt('send screenshot after payment')}"
-    )
-    
-    await message.reply_photo(
-        photo=qr_url,
-        caption=msg
-    )
+    msg = f"{txt('add funds')}\n\nUPI: `sudeepkumar8202@ybl`\n{txt('note')}: {txt('send screenshot after payment')}"
+    await message.reply_photo(photo=qr_url, caption=msg)
 
 @app.on_message(filters.photo & filters.private)
 async def handle_ss(client, message):
     if message.from_user.id in USER_STATES: return
-    
     uid = message.from_user.id
     name = message.from_user.first_name
-    
     cap = f"📩 {txt('new payment')}\n👤: {name} (`{uid}`)"
-    btns = InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Approve", callback_data=f"pay_app_{uid}"),
-        InlineKeyboardButton("❌ Reject", callback_data=f"pay_rej_{uid}")
-    ]])
-    
+    btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"pay_app_{uid}"), InlineKeyboardButton("❌ Reject", callback_data=f"pay_rej_{uid}")]])
     await client.send_photo(config.LOG_CHANNEL_ID, message.photo.file_id, caption=cap, has_spoiler=True, reply_markup=btns)
     await message.reply(txt("screenshot submitted. wait for approval."))
 
@@ -335,7 +378,6 @@ async def pay_cb(client, cb):
         uid = int(cb.data.split("_")[2])
         await cb.message.delete()
         await client.send_message(uid, txt("payment rejected ❌"))
-    
     elif cb.data.startswith("pay_app_"):
         uid = int(cb.data.split("_")[2])
         ADMIN_STATES[cb.from_user.id] = {"act": "fund", "target": uid}
@@ -348,31 +390,15 @@ async def admin_pay_reply(client, message):
         uid = ADMIN_STATES[aid]["target"]
         try: amt = float(message.text)
         except: return
-        
         await users_col.update_one({"_id": uid}, {"$inc": {"balance": amt}})
         await client.send_message(uid, f"✅ {txt('funds added')}: ₹{amt}")
         await message.reply("Done.")
         del ADMIN_STATES[aid]
 
-# ─────────────────────────────
-# 🎁 ADMIN TOOLS (Broadcast/Redeem)
-# ─────────────────────────────
-
 @app.on_message(filters.command("createcode") & filters.user(config.OWNER_ID))
 async def cc(c, m):
     try: _, n, v = m.text.split(" "); await codes_col.insert_one({"code": n.upper(), "val": float(v), "used_by": []}); await m.reply("Created.")
     except: pass
-
-@app.on_message(filters.command("redeem"))
-async def rc(c, m):
-    try: code = m.text.split(" ")[1].upper()
-    except: return
-    data = await codes_col.find_one({"code": code})
-    uid = m.from_user.id
-    if not data or uid in data["used_by"]: return await m.reply(txt("invalid/used"))
-    await users_col.update_one({"_id": uid}, {"$inc": {"balance": data["val"]}})
-    await codes_col.update_one({"code": code}, {"$push": {"used_by": uid}})
-    await m.reply(f"{txt('redeemed')}: ₹{data['val']}")
 
 @app.on_message(filters.command("broadcast") & filters.user(config.OWNER_ID))
 async def bc(c, m):
@@ -382,8 +408,16 @@ async def bc(c, m):
         except: pass
     await m.reply("Done.")
 
-# 🏁 START
 if __name__ == "__main__":
+    try:
+        import uvloop
+        uvloop.install()
+    except: pass
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     print("🤖 SMM Bot Live...")
     loop = asyncio.get_event_loop()
     loop.create_task(check_orders_loop())
