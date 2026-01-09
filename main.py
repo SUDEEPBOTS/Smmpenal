@@ -8,9 +8,10 @@ from support import ai_agent
 import config
 
 # ─────────────────────────────
-# 🛠️ CONFIG
+# 🛠️ HARDCODED CONFIG
 # ─────────────────────────────
-MY_OWNER_ID = 6356015122 
+
+MY_OWNER_ID = 6356015122  # Tera ID
 
 app = Client(
     "SMM_Bot",
@@ -25,9 +26,11 @@ users_col = db["users"]
 orders_col = db["orders"]     
 codes_col = db["redeem_codes"]
 
+# MEMORY STATES
 USER_STATES = {} 
 ADMIN_STATES = {}
 
+# ✨ SMALL CAPS CONVERTER
 def txt(text):
     mapping = str.maketrans("abcdefghijklmnopqrstuvwxyz", "ᴀʙᴄᴅᴇғɢʜɪᴊᴋʟᴍɴᴏᴘǫʀsᴛᴜᴠᴡxʏᴢ")
     return text.lower().translate(mapping)
@@ -49,18 +52,18 @@ async def check_orders_loop():
                     if new_status != old_status:
                         await orders_col.update_one({"order_id": order_id}, {"$set": {"status": new_status}})
                         if new_status == "completed":
-                            try: await app.send_message(user_id, f"✅ **{txt('order completed')}**\nID: {order_id}")
+                            try: await app.send_message(user_id, f"✅ **{txt('order completed')}**\n🆔 `{order_id}`")
                             except: pass
                         elif new_status == "canceled":
                             refund = order["cost"]
                             await users_col.update_one({"_id": user_id}, {"$inc": {"balance": refund}})
-                            try: await app.send_message(user_id, f"❌ **{txt('order canceled')}**\nRefund: ₹{refund}")
+                            try: await app.send_message(user_id, f"❌ **{txt('order canceled')}**\n💸 Refunded: ₹{refund}")
                             except: pass
             await asyncio.sleep(300) 
         except: await asyncio.sleep(60)
 
 # ─────────────────────────────
-# 🏠 START & MENUS
+# 🏠 START MENU
 # ─────────────────────────────
 
 @app.on_message(filters.command("start"))
@@ -72,88 +75,138 @@ async def start(client, message):
     if not user:
         await users_col.insert_one({"_id": user_id, "name": name, "balance": 0.0, "total_spent": 0.0})
 
-    if user_id == MY_OWNER_ID:
-        stats_users = await users_col.count_documents({})
-        stats_orders = await orders_col.count_documents({})
-        btns = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
-             InlineKeyboardButton("🎁 Create Code", callback_data="admin_create_code")],
-            [InlineKeyboardButton("🔙 User Mode", callback_data="home")]
-        ])
-        return await message.reply(f"👑 **Admin Panel**\nUsers: `{stats_users}` | Orders: `{stats_orders}`", reply_markup=btns)
-
     start_img = "https://i.ibb.co/VcHB3c6q/247e441f5ad09d2e61ee25d64785c602.jpg" 
+    
     welcome_text = (
-        f"👋 **{txt('welcome to the premium smm bot')}**\n\n"
+        f"👋 **{txt('welcome to premium smm')}**\n\n"
         f"👑 **{txt('user')}:** {txt(name)}\n"
         f"🆔 **{txt('id')}:** `{user_id}`\n\n"
         f"🤖 **{txt('ai support active')}**\n"
-        f"You can ask me anything directly in chat!\n\n"
-        f"👇 **{txt('select an action below')}:**"
+        f"👇 **{txt('select action')}:**"
     )
-    btns = InlineKeyboardMarkup([
+
+    # Standard Buttons
+    btn_list = [
         [InlineKeyboardButton(txt("🚀 new order"), callback_data="menu_categories")],
         [InlineKeyboardButton(txt("📦 my orders"), callback_data="my_orders_list")], 
         [InlineKeyboardButton(txt("💳 add funds"), callback_data="menu_deposit"),
          InlineKeyboardButton(txt("🎁 redeem code"), callback_data="menu_redeem")],
         [InlineKeyboardButton(txt("👤 profile"), callback_data="menu_profile"),
-         InlineKeyboardButton(txt("📞 support / help"), callback_data="ai_help")]
-    ])
-    await message.reply_photo(photo=start_img, caption=welcome_text, has_spoiler=True, reply_markup=btns)
+         InlineKeyboardButton(txt("📞 support"), callback_data="ai_help")]
+    ]
+
+    # Add Owner Button if Admin
+    if user_id == MY_OWNER_ID:
+        btn_list.insert(0, [InlineKeyboardButton("👑 OWNER PANEL", callback_data="admin_home")])
+
+    await message.reply_photo(photo=start_img, caption=welcome_text, has_spoiler=True, reply_markup=InlineKeyboardMarkup(btn_list))
 
 # ─────────────────────────────
-# 🖱️ CALLBACK HANDLER
+# 👮 ADMIN DIRECT COMMANDS
+# ─────────────────────────────
+
+@app.on_message(filters.command("addmoney") & filters.user(MY_OWNER_ID))
+async def add_money_cmd(client, message):
+    try:
+        _, target, amt = message.text.split(" ")
+        target_id = int(target)
+        amount = float(amt)
+        
+        await users_col.update_one({"_id": target_id}, {"$inc": {"balance": amount}})
+        await message.reply(f"✅ **Added** ₹{amount} to `{target_id}`")
+        try: await client.send_message(target_id, f"🥳 **Funds Added:** ₹{amount}")
+        except: pass
+    except:
+        await message.reply("❌ **Usage:** `/addmoney 123456 100`")
+
+@app.on_message(filters.command("removemoney") & filters.user(MY_OWNER_ID))
+async def remove_money_cmd(client, message):
+    try:
+        _, target, amt = message.text.split(" ")
+        target_id = int(target)
+        amount = float(amt)
+        
+        await users_col.update_one({"_id": target_id}, {"$inc": {"balance": -amount}})
+        await message.reply(f"🗑️ **Removed** ₹{amount} from `{target_id}`")
+    except:
+        await message.reply("❌ **Usage:** `/removemoney 123456 100`")
+
+# ─────────────────────────────
+# 🖱️ MASTER CALLBACK HANDLER (ALL BUTTONS HERE)
 # ─────────────────────────────
 
 @app.on_callback_query()
-async def callback_handler(client, callback: CallbackQuery):
+async def master_callback(client, callback: CallbackQuery):
     data = callback.data
     user_id = callback.from_user.id
     
-    # 👑 ADMIN
-    if data.startswith("admin_"):
-        if user_id != MY_OWNER_ID: return await callback.answer("Owner Only", show_alert=True)
-        if data == "admin_broadcast":
-            ADMIN_STATES[user_id] = {"step": "wait_broadcast"}
-            await callback.message.reply("📢 Send Message to Broadcast")
-        elif data == "admin_create_code":
-            ADMIN_STATES[user_id] = {"step": "wait_code_input"}
-            await callback.message.reply("🎁 Format: `CODE Amount`")
+    # 💰 PAYMENT APPROVAL/REJECT (PRIORITY)
+    if data.startswith("pay_"):
+        if user_id != MY_OWNER_ID: 
+            return await callback.answer("⚠️ Admin Only!", show_alert=True)
+        
+        uid = int(data.split("_")[2])
+        
+        if "pay_rej_" in data:
+            await callback.message.delete()
+            await client.send_message(uid, txt("payment rejected ❌"))
+            await callback.answer("Rejected!", show_alert=True)
+            
+        elif "pay_app_" in data:
+            ADMIN_STATES[user_id] = {"step": "wait_fund_amount", "target": uid}
+            await callback.message.reply(f"💰 **Enter Amount for User** `{uid}`:")
+            await callback.answer()
         return
 
-    # 📦 ORDERS
-    if data == "my_orders_list":
-        orders = []
-        async for o in orders_col.find({"user_id": user_id}).sort("_id", -1).limit(5):
-            status_icon = "✅" if o['status'] == 'completed' else "⏳" if o['status'] == 'pending' else "❌"
-            orders.append(f"🆔 `{o['order_id']}` | {status_icon} {txt(o['status'])}\n🔗 Service: {txt('telegram service')}\n")
-        
-        text = f"📦 **{txt('your recent orders')}**\n\n" + "\n".join(orders) if orders else txt("no orders found")
-        await callback.message.edit(text, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(txt("🔄 refresh"), callback_data="my_orders_list")],
-            [InlineKeyboardButton(txt("🔙 back"), callback_data="home")]
-        ]))
+    # 👑 ADMIN PANEL
+    if data == "admin_home":
+        if user_id != MY_OWNER_ID: return
+        stats_u = await users_col.count_documents({})
+        stats_o = await orders_col.count_documents({})
+        btns = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
+             InlineKeyboardButton("🎁 Create Code", callback_data="admin_create_code")],
+            [InlineKeyboardButton("🔙 Back to User Mode", callback_data="home")]
+        ])
+        await callback.message.edit(f"👑 **Admin Panel**\nUsers: `{stats_u}` | Orders: `{stats_o}`", reply_markup=btns)
+    
+    elif data == "admin_broadcast":
+        ADMIN_STATES[user_id] = {"step": "wait_broadcast"}
+        await callback.message.reply("📢 Send Message to Broadcast")
+    
+    elif data == "admin_create_code":
+        ADMIN_STATES[user_id] = {"step": "wait_code_input"}
+        await callback.message.reply("🎁 Send: `CODE Amount`")
 
-    # 🏠 HOME
+    # 📦 USER MENUS
     elif data == "home":
         if user_id in USER_STATES: del USER_STATES[user_id]
-        btns = InlineKeyboardMarkup([
+        btn_list = [
             [InlineKeyboardButton(txt("🚀 new order"), callback_data="menu_categories")],
-            [InlineKeyboardButton(txt("📦 my orders"), callback_data="my_orders_list")],
+            [InlineKeyboardButton(txt("📦 my orders"), callback_data="my_orders_list")], 
             [InlineKeyboardButton(txt("💳 add funds"), callback_data="menu_deposit"),
              InlineKeyboardButton(txt("🎁 redeem code"), callback_data="menu_redeem")],
             [InlineKeyboardButton(txt("👤 profile"), callback_data="menu_profile"),
-             InlineKeyboardButton(txt("📞 support / help"), callback_data="ai_help")]
-        ])
-        try: await callback.message.edit(txt("main menu"), reply_markup=btns)
-        except: await callback.message.reply(txt("main menu"), reply_markup=btns)
+             InlineKeyboardButton(txt("📞 support"), callback_data="ai_help")]
+        ]
+        if user_id == MY_OWNER_ID: btn_list.insert(0, [InlineKeyboardButton("👑 OWNER PANEL", callback_data="admin_home")])
+        try: await callback.message.edit(txt("main menu"), reply_markup=InlineKeyboardMarkup(btn_list))
+        except: await callback.message.reply(txt("main menu"), reply_markup=InlineKeyboardMarkup(btn_list))
+
+    elif data == "my_orders_list":
+        orders = []
+        async for o in orders_col.find({"user_id": user_id}).sort("_id", -1).limit(5):
+            icon = "✅" if o['status'] == 'completed' else "⏳"
+            orders.append(f"🆔 `{o['order_id']}` | {icon} {txt(o['status'])}")
+        text = f"📦 **{txt('recent orders')}**\n\n" + ("\n".join(orders) if orders else txt("no orders found"))
+        await callback.message.edit(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
     elif data == "ai_help":
         msg = f"🤖 **{txt('ai support system')}**\n\nConnected to **Groq AI**.\n👉 **Type your query directly.**"
         await callback.message.edit(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
     elif data == "menu_categories":
-        text = f"📂 **{txt('select category')}**\n{txt('choose what you want to buy')}:"
+        text = f"📂 **{txt('select category')}**:"
         btns = InlineKeyboardMarkup([
             [InlineKeyboardButton(txt("👁️ views"), callback_data="cat_view"),
              InlineKeyboardButton(txt("👤 members"), callback_data="cat_member")],
@@ -179,9 +232,8 @@ async def callback_handler(client, callback: CallbackQuery):
         await client.send_photo(user_id, qr_url, caption=caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
     elif data.startswith("cat_"):
-        new_data = f"services_{data.split('_')[1]}_0"
-        callback.data = new_data 
-        await callback_handler(client, callback)
+        callback.data = f"services_{data.split('_')[1]}_0"
+        await master_callback(client, callback)
 
     elif data.startswith("services_"):
         parts = data.split("_")
@@ -190,6 +242,7 @@ async def callback_handler(client, callback: CallbackQuery):
         await callback.answer(txt("loading..."))
         services = await smm.get_services()
         if "error" in services: return await callback.message.edit("API Error")
+        
         tg_services = [s for s in services if "telegram" in s.get("name", "").lower()]
         final_list = []
         for s in tg_services:
@@ -198,6 +251,7 @@ async def callback_handler(client, callback: CallbackQuery):
             elif cat_filter == "member" and ("member" in comb or "sub" in comb): final_list.append(s)
             elif cat_filter == "reaction" and ("reaction" in comb or "like" in comb): final_list.append(s)
             elif cat_filter == "other" and not any(x in comb for x in ["view", "member", "sub", "reaction", "like"]): final_list.append(s)
+
         if not final_list: return await callback.message.edit("No services found.")
         current_batch = final_list[offset : offset + limit]
         btns_list = []
@@ -229,32 +283,33 @@ async def callback_handler(client, callback: CallbackQuery):
 async def input_handler(client, message: Message):
     user_id = message.from_user.id
     
-    # 👑 ADMIN
-    if user_id == MY_OWNER_ID:
-        if user_id in ADMIN_STATES:
-            st = ADMIN_STATES[user_id]
-            if st["step"] == "wait_broadcast":
-                async for u in users_col.find({}):
-                    try: await message.copy(u["_id"]); await asyncio.sleep(0.5)
-                    except: pass
-                await message.reply("✅ Broadcast Done!")
-                del ADMIN_STATES[user_id]
-            elif st["step"] == "wait_code_input":
-                try: c, v = message.text.split(" "); await codes_col.insert_one({"code": c.upper(), "val": float(v), "used_by": []}); await message.reply("Created")
+    # 👑 ADMIN INPUTS
+    if user_id == MY_OWNER_ID and user_id in ADMIN_STATES:
+        st = ADMIN_STATES[user_id]
+        if st["step"] == "wait_fund_amount":
+            t = st["target"]
+            try: 
+                a = float(message.text)
+                await users_col.update_one({"_id": t}, {"$inc": {"balance": a}})
+                await client.send_message(t, f"✅ **Funds Added:** ₹{a}")
+                await message.reply(f"✅ Added ₹{a} to `{t}`")
+            except: await message.reply("Numbers Only")
+            del ADMIN_STATES[user_id]
+        
+        elif st["step"] == "wait_broadcast":
+            async for u in users_col.find({}):
+                try: await message.copy(u["_id"]); await asyncio.sleep(0.5)
                 except: pass
-                del ADMIN_STATES[user_id]
-            elif st["step"] == "wait_fund_amount":
-                t = st["target"]
-                try: 
-                    a = float(message.text)
-                    await users_col.update_one({"_id": t}, {"$inc": {"balance": a}})
-                    await client.send_message(t, f"✅ **Funds Added:** ₹{a}")
-                    await message.reply(f"✅ Added ₹{a} to `{t}`")
-                except: await message.reply("Numbers Only")
-                del ADMIN_STATES[user_id]
-            return
+            await message.reply("✅ Broadcast Done!")
+            del ADMIN_STATES[user_id]
+            
+        elif st["step"] == "wait_code_input":
+            try: c, v = message.text.split(" "); await codes_col.insert_one({"code": c.upper(), "val": float(v), "used_by": []}); await message.reply("Created")
+            except: pass
+            del ADMIN_STATES[user_id]
+        return
 
-    # 👤 USER
+    # 👤 USER INPUTS
     if user_id in USER_STATES:
         state = USER_STATES[user_id]
         step = state["step"]
@@ -285,7 +340,7 @@ async def input_handler(client, message: Message):
             resp = await smm.add_order(s['service'], state["link"], qty)
             if "order" in resp:
                 await users_col.update_one({"_id": user_id}, {"$inc": {"balance": -cost, "total_spent": cost}})
-                await orders_col.insert_one({"order_id": resp["order"], "user_id": user_id, "status": "pending", "cost": cost, "quantity": qty, "link": state["link"]})
+                await orders_col.insert_one({"order_id": resp["order"], "user_id": user_id, "status": "pending", "cost": cost})
                 await message.reply(f"Order Placed! ID: {resp['order']}")
             else: await message.reply(f"Error: {resp}")
             del USER_STATES[user_id]
@@ -301,34 +356,22 @@ async def input_handler(client, message: Message):
         await message.reply(response)
 
 # ─────────────────────────────
-# 📸 PAYMENT (DIRECT OWNER PM)
+# 📸 PAYMENT SCREENSHOT
 # ─────────────────────────────
 
 @app.on_message(filters.photo & filters.private)
 async def handle_ss(client, message):
     if message.from_user.id in USER_STATES: return
     uid, name = message.from_user.id, message.from_user.first_name
-    btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"pay_app_{uid}"), InlineKeyboardButton("❌ Reject", callback_data=f"pay_rej_{uid}")]])
     
-    # Send to Owner
+    # ⚠️ UNIQUE CALLBACK DATA: "pay_app_UID"
+    btns = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Approve", callback_data=f"pay_app_{uid}"), 
+        InlineKeyboardButton("❌ Reject", callback_data=f"pay_rej_{uid}")
+    ]])
+    
     await client.send_photo(MY_OWNER_ID, message.photo.file_id, caption=f"📩 Pay: {name} (`{uid}`)", reply_markup=btns)
     await message.reply(txt("screenshot sent to admin. please wait."))
-
-@app.on_callback_query()
-async def pay_cb(client, cb):
-    # Only Owner Check
-    if cb.from_user.id != MY_OWNER_ID: return 
-    
-    if cb.data.startswith("pay_rej_"):
-        uid = int(cb.data.split("_")[2])
-        await cb.message.delete()
-        await client.send_message(uid, txt("payment rejected ❌"))
-    
-    elif cb.data.startswith("pay_app_"):
-        uid = int(cb.data.split("_")[2])
-        # Set State for Admin
-        ADMIN_STATES[cb.from_user.id] = {"step": "wait_fund_amount", "target": uid}
-        await cb.message.reply(f"💰 Enter Amount for `{uid}`:")
 
 if __name__ == "__main__":
     try: import uvloop; uvloop.install()
