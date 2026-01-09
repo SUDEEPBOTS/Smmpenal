@@ -19,7 +19,7 @@ app = Client(
 mongo = AsyncIOMotorClient(config.MONGO_URL)
 db = mongo["SMM_Panel_DB"]
 users_col = db["users"]
-orders_col = db["orders"]
+orders_col = db["orders"]     
 codes_col = db["redeem_codes"]
 
 # MEMORY STATES
@@ -136,14 +136,26 @@ async def callback_handler(client, callback: CallbackQuery):
         )
         await callback.message.edit(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
-    # 💳 DEPOSIT
+    # 💳 DEPOSIT (UPDATED WITH QR IMAGE)
     elif data == "menu_deposit":
-        msg = (
+        # Tera PhonePe Image Link
+        qr_url = "https://i.ibb.co/HTdfpLgv/Screenshot-20260109-103131-Phone-Pe.png"
+        
+        caption = (
             f"{txt('💳 add funds')}\n\n"
-            f"UPI: `yourupi@paytm`\n"
-            f"{txt('send screenshot after payment')}"
+            f"UPI: `sudeepkumar8202@ybl`\n" # Screenshot ke hisab se UPI ID
+            f"Scan QR above to pay.\n\n"
+            f"{txt('important')}: {txt('send screenshot after payment')}"
         )
-        await callback.message.edit(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
+        
+        # Purana message delete karke Photo bhejo
+        await callback.message.delete()
+        await client.send_photo(
+            chat_id=user_id,
+            photo=qr_url,
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]])
+        )
 
     # 🚀 SERVICES (PAGINATION SYSTEM)
     elif data.startswith("services_"):
@@ -210,7 +222,7 @@ async def callback_handler(client, callback: CallbackQuery):
             f"👇 **{txt('send your link below')}**:"
         )
         
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton(txt("❌ cancel"), callback_data="home")])])
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton(txt("❌ cancel"), callback_data="home")]])
         await callback.message.edit(text, reply_markup=btn, disable_web_page_preview=True)
 
 # ─────────────────────────────
@@ -285,6 +297,21 @@ async def input_handler(client, message: Message):
 # ─────────────────────────────
 # 📸 PAYMENT SYSTEM
 # ─────────────────────────────
+
+@app.on_message(filters.command("deposit"))
+async def deposit_info(client, message):
+    qr_url = "https://i.ibb.co/HTdfpLgv/Screenshot-20260109-103131-Phone-Pe.png"
+    
+    msg = (
+        f"{txt('add funds')}\n\n"
+        f"UPI: `sudeepkumar8202@ybl`\n"
+        f"{txt('note')}: {txt('send screenshot after payment')}"
+    )
+    
+    await message.reply_photo(
+        photo=qr_url,
+        caption=msg
+    )
 
 @app.on_message(filters.photo & filters.private)
 async def handle_ss(client, message):
@@ -361,4 +388,4 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(check_orders_loop())
     app.run()
-      
+    
