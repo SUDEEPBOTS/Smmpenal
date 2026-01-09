@@ -148,7 +148,7 @@ async def callback_handler(client, callback: CallbackQuery):
 
     elif data == "menu_deposit":
         qr_url = "https://i.ibb.co/HTdfpLgv/Screenshot-20260109-103131-Phone-Pe.png"
-        caption = f"{txt('💳 add funds')}\n\nUPI: `sudeepkumar8202@ybl`\nSend Screenshot after payment."
+        caption = f"{txt('💳 add funds')}\n\nUPI: `sudeep@ybl`\nSend Screenshot after payment."
         await callback.message.delete()
         await client.send_photo(user_id, qr_url, caption=caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(txt("🔙 back"), callback_data="home")]]))
 
